@@ -1,0 +1,50 @@
+version: 2.1
+
+jobs:
+  build:
+    docker:
+      - image: circleci/python:3.9
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Authenticate with Google Cloud
+          command: |
+            echo $GCLOUD_SERVICE_KEY | base64 --decode > keyfile.json
+            gcloud auth activate-service-account --key-file=keyfile.json
+            gcloud config set project $GOOGLE_PROJECT_ID
+      - run:
+          name: Build Docker Image
+          command: docker build -t gcr.io/$GOOGLE_PROJECT_ID/mlops-project:$CIRCLE_SHA1 .
+      - run:
+          name: Push Docker Image to GCR
+          command: docker push gcr.io/$GOOGLE_PROJECT_ID/mlops-project:$CIRCLE_SHA1
+
+  deploy:
+    docker:
+      - image: google/cloud-sdk
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Authenticate with Google Cloud
+          command: |
+            echo $GCLOUD_SERVICE_KEY | base64 --decode > keyfile.json
+            gcloud auth activate-service-account --key-file=keyfile.json
+            gcloud config set project $GOOGLE_PROJECT_ID
+      - run:
+          name: Deploy to GKE
+          command: |
+            gcloud container clusters get-credentials mlops-cluster --zone $GCP_ZONE
+            kubectl set image deployment/mlops-app mlops-app=gcr.io/$GOOGLE_PROJECT_ID/mlops-project:$CIRCLE_SHA1
+
+workflows:
+  version: 2
+  build_and_deploy:
+    jobs:
+      - build
+      - deploy:
+          requires:
+            - build
