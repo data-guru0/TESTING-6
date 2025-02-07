@@ -23,11 +23,9 @@ jobs:
             echo "$GCLOUD_SERVICE_KEY" | base64 --decode > gcp-key.json
             gcloud auth activate-service-account --key-file=gcp-key.json
             gcloud auth configure-docker us-central1-docker.pkg.dev
-      - run:
-          name: Build & Push Docker Image
-          command: |
             docker build -t gcr.io/$GOOGLE_PROJECT_ID/mlops-app:latest .
-            docker push gcr.io/$GOOGLE_PROJECT_ID/mlops-app:latest
+            docker push gcr.io/$GOOGLE_PROJECT_ID/mlops-app:latest           
+            
 
   deploy_to_gke:
     executor: docker-executor
