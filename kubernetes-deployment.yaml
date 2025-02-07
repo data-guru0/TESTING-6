@@ -13,20 +13,22 @@ spec:
         app: mlops-app
     spec:
       containers:
-        - name: mlops-app
-          image: gcr.io/mlops-new-447207/mlops-project:latest
-          ports:
-            - containerPort: 5000
+      - name: mlops-app
+        image: gcr.io/mlops-new-447207/mlops-app:latest
+        ports:
+        - containerPort: 5000
+
 ---
+
 apiVersion: v1
 kind: Service
 metadata:
   name: mlops-service
 spec:
-  type: LoadBalancer
   selector:
     app: mlops-app
   ports:
     - protocol: TCP
       port: 80
       targetPort: 5000
+  type: LoadBalancer

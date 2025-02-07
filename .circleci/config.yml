@@ -1,50 +1,52 @@
 version: 2.1
 
-jobs:
-  build:
+executors:
+  docker-executor:
     docker:
-      - image: circleci/python:3.9
+      - image: circleci/python:3.8
+    working_directory: ~/repo
+
+jobs:
+  checkout_code:
+    executor: docker-executor
     steps:
       - checkout
-      - setup_remote_docker:
-          docker_layer_caching: true
-      - run:
-          name: Authenticate with Google Cloud
-          command: |
-            echo $GCLOUD_SERVICE_KEY | base64 --decode > keyfile.json
-            gcloud auth activate-service-account --key-file=keyfile.json
-            gcloud config set project $GOOGLE_PROJECT_ID
+
+  build_docker_image:
+    executor: docker-executor
+    steps:
+      - checkout
+      - setup_remote_docker
       - run:
           name: Build Docker Image
-          command: docker build -t gcr.io/$GOOGLE_PROJECT_ID/mlops-project:$CIRCLE_SHA1 .
-      - run:
-          name: Push Docker Image to GCR
-          command: docker push gcr.io/$GOOGLE_PROJECT_ID/mlops-project:$CIRCLE_SHA1
+          command: |
+            echo $GCLOUD_SERVICE_KEY | base64 --decode > gcp-key.json
+            gcloud auth activate-service-account --key-file=gcp-key.json
+            gcloud auth configure-docker
+            docker build -t gcr.io/$GOOGLE_PROJECT_ID/mlops-app:latest .
+            docker push gcr.io/$GOOGLE_PROJECT_ID/mlops-app:latest
 
-  deploy:
-    docker:
-      - image: google/cloud-sdk
+  deploy_to_gke:
+    executor: docker-executor
     steps:
       - checkout
-      - setup_remote_docker:
-          docker_layer_caching: true
-      - run:
-          name: Authenticate with Google Cloud
-          command: |
-            echo $GCLOUD_SERVICE_KEY | base64 --decode > keyfile.json
-            gcloud auth activate-service-account --key-file=keyfile.json
-            gcloud config set project $GOOGLE_PROJECT_ID
+      - setup_remote_docker
       - run:
           name: Deploy to GKE
           command: |
-            gcloud container clusters get-credentials mlops-cluster --zone $GCP_ZONE
-            kubectl set image deployment/mlops-app mlops-app=gcr.io/$GOOGLE_PROJECT_ID/mlops-project:$CIRCLE_SHA1
+            echo $GCLOUD_SERVICE_KEY | base64 --decode > gcp-key.json
+            gcloud auth activate-service-account --key-file=gcp-key.json
+            gcloud container clusters get-credentials $GKE_CLUSTER --zone $GOOGLE_COMPUTE_ZONE
+            kubectl apply -f kubernetes-deployment.yaml
 
 workflows:
   version: 2
-  build_and_deploy:
+  deploy_pipeline:
     jobs:
-      - build
-      - deploy:
+      - checkout_code
+      - build_docker_image:
           requires:
-            - build
+            - checkout_code
+      - deploy_to_gke:
+          requires:
+            - build_docker_image
